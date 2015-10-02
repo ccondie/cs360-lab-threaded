@@ -8,10 +8,13 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <semaphore.h>
+#include <pthread.h>
 
 #include <string>
 #include <iostream>
 #include <vector>
+#include <queue>
 
 #include "user.h"
 #include "message.h"
@@ -40,6 +43,8 @@ private:
 
     Message parse(string message, int client);
 
+    // void* thread_run(void *);
+
     int port_;
     int server_;
     int buflen_;
@@ -48,5 +53,13 @@ private:
     bool debugFlag;
     bool commandFound;
 
+
+    sem_t user_lock;
+    sem_t quu_lock;
+    sem_t quu_notEmpty;
+
     vector<User> users;
+    vector<pthread_t> threads;
+    queue<int> quu;
+
 };

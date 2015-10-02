@@ -8,6 +8,10 @@ Msgd::Msgd(int port, bool debug_t)
     buflen_ = 1024;
     buf_ = new char[buflen_+1];
     debugFlag = debug_t;
+
+    sem_init(&user_lock, 0 ,1);
+    sem_init(&quu_lock, 0, 1);
+    sem_init(&quu_notEmpty, 0 , 0);
 }
 
 Msgd::~Msgd() 
@@ -16,14 +20,73 @@ Msgd::~Msgd()
     delete buf_;
 }
 
+struct package
+{
+    sem_t* quu_notEmpty;
+    sem_t* quu_lock;
+    sem_t* user_lock;
+
+    queue<int>* quu;
+
+};
+
+
+void*
+thread_run(void *vptr)
+{
+    struct package* pack = (struct package*) vptr;
+    int currentClient;
+    queue<int>* quu = pack->quu;
+
+    cout << "I AM " << pthread_self() << endl;
+    while(1)
+    {
+        //wait for the quu not to be empty
+        sem_wait(pack->quu_notEmpty);
+        
+        //get the front of the queue
+        sem_wait(pack->quu_lock);
+        currentClient = quu->front();
+        quu->pop();
+        sem_post(pack->quu_lock);
+
+        //handle the request of this client
+        handle(currentClient);
+
+        //return it to the end
+        //      sem_post()
+        //  OR
+        //remove it
+        //      NOTHING
+
+    }
+}
+
 void
 Msgd::run()
 {
-    debug("Msgd::run()");
     // create and run the Msgd
     create();
+
+    //create the pthreads
+    for(int i = 0; i < 10; i++)
+    {
+        debug("Msgd::run()::creating thread");
+
+        struct package pack;
+        pack.quu_notEmpty = &quu_notEmpty;
+        pack.quu_lock = &quu_lock;
+        pack.user_lock = &user_lock;
+        pack.quu = &quu;
+
+        pthread_t temp;
+        threads.push_back(pthread_create(&temp, NULL, &thread_run, &pack));
+    }
+
     serve();
 }
+
+
 
 void
 Msgd::create() 
@@ -83,10 +146,18 @@ Msgd::serve()
     struct sockaddr_in client_addr;
     socklen_t clientlen = sizeof(client_addr);
 
-      // accept clients
+    // accept clients
     while ((client = accept(server_,(struct sockaddr *)&client_addr,&clientlen)) > 0)
     {
-        handle(client);
+        sem_wait(&quu_lock);
+        quu.push(client);
+        sem_post(&quu_lock);
+
+        sem_post(&quu_notEmpty);
+
+        // cout << "A" << endl;
+        // handle(client);
+        // cout << "B" << endl;
     }
     close_socket();
 }
@@ -99,62 +170,59 @@ Msgd::handle(int client)
 
     debug("Msgd::handle()");
 
-    // loop to handle all requests
-    while (1) 
+    // get a request
+    string request = get_request(client);
+
+    // break if client is done or an error occurred
+    if (request.empty())
     {
-        debug("Msgd::handle():while(1)");
-        // get a request
-        string request = get_request(client);
-
-        // break if client is done or an error occurred
-        if (request.empty())
-            break;
-
-        //parse request
-        message = parse(request, client);
-
-        //handle message
-        commandFound = false;
-
-        if(message.command == "put")
-        {
-            commandFound = true;
-            success = send_response(client, handPut(message));
-        }
-
-        if(message.command == "list")
-        {
-            commandFound = true;
-            success = send_response(client, handList(message));
-        }
-
-        if(message.command == "get")
-        {
-            commandFound = true;
-            success = send_response(client, handGet(message));
-        }
-
-        if(message.command == "reset")
-        {
-            commandFound = true;
-            for(int i = 0; i < users.size(); i++)
-            {
-                users.at(i).subject.clear();
-                users.at(i).message.clear();
-            }
-            users.clear();
-
-            success = send_response(client, "OK\n");
-        }
-
-        if(!commandFound)
-        {
-            //throw error
-            bool success = send_response(client,"error: unexpected command\n");
-        }
-
-        
+        close(client);
+        return;
     }
+
+    //parse request
+    message = parse(request, client);
+
+    //handle message
+    commandFound = false;
+
+    if(message.command == "put")
+    {
+        commandFound = true;
+        success = send_response(client, handPut(message));
+    }
+
+    if(message.command == "list")
+    {
+        commandFound = true;
+        success = send_response(client, handList(message));
+    }
+
+    if(message.command == "get")
+    {
+        commandFound = true;
+        success = send_response(client, handGet(message));
+    }
+
+    if(message.command == "reset")
+    {
+        commandFound = true;
+        for(int i = 0; i < users.size(); i++)
+        {
+            users.at(i).subject.clear();
+            users.at(i).message.clear();
+        }
+        users.clear();
+
+        success = send_response(client, "OK\n");
+    }
+
+    if(!commandFound)
+    {
+        //throw error
+        bool success = send_response(client,"error: unexpected command\n");
+    }
+
     close(client);
 }
 

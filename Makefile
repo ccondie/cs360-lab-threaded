@@ -6,7 +6,7 @@ MSGD=		msgd-run.o msgd.o user.o message.o
 MSG=		msg-run.o msg.o
 OBJS =			$(MSGD) $(MSG)
 
-LIBS=
+LIBS=		-pthread
 
 CCFLAGS= -g
 
