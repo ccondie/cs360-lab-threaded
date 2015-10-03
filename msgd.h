@@ -15,6 +15,7 @@
 #include <iostream>
 #include <vector>
 #include <queue>
+#include <map>
 
 #include "user.h"
 #include "message.h"
@@ -27,12 +28,15 @@ public:
     ~Msgd();
 
     void run();
+    void handle(int client);
     
 private:
     void create();
     void close_socket();
     void serve();
-    void handle(int client);
+
+    
+
     string get_request(int client);
     bool send_response(int client, string response);
     
@@ -61,5 +65,7 @@ private:
     vector<User> users;
     vector<pthread_t> threads;
     queue<int> quu;
+
+    map<int,string> caches;
 
 };

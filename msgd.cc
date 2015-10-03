@@ -27,6 +27,8 @@ struct package
     sem_t* user_lock;
 
     queue<int>* quu;
+    int thread_id;
+    Msgd* self_pointer;
 
 };
 
@@ -37,6 +39,7 @@ thread_run(void *vptr)
     struct package* pack = (struct package*) vptr;
     int currentClient;
     queue<int>* quu = pack->quu;
+    Msgd* self = pack->self_pointer;
 
     cout << "I AM " << pthread_self() << endl;
     while(1)
@@ -50,8 +53,11 @@ thread_run(void *vptr)
         quu->pop();
         sem_post(pack->quu_lock);
 
+        cout << "thread " << pthread_self() << " reporting for duty" << endl;
         //handle the request of this client
-        handle(currentClient);
+        self->handle(currentClient);
+
+        // sem_post(pack->quu_notEmpty);
 
         //return it to the end
         //      sem_post()
@@ -69,8 +75,9 @@ Msgd::run()
     create();
 
     //create the pthreads
-    for(int i = 0; i < 10; i++)
+    for(int i = 0; i < 3; i++)
     {
+        
         debug("Msgd::run()::creating thread");
 
         struct package pack;
@@ -78,9 +85,11 @@ Msgd::run()
         pack.quu_lock = &quu_lock;
         pack.user_lock = &user_lock;
         pack.quu = &quu;
+        pack.self_pointer = this;
 
         pthread_t temp;
         threads.push_back(pthread_create(&temp, NULL, &thread_run, &pack));
+        usleep(1);
     }
 
     serve();
@@ -154,10 +163,6 @@ Msgd::serve()
         sem_post(&quu_lock);
 
         sem_post(&quu_notEmpty);
-
-        // cout << "A" << endl;
-        // handle(client);
-        // cout << "B" << endl;
     }
     close_socket();
 }
@@ -176,6 +181,7 @@ Msgd::handle(int client)
     // break if client is done or an error occurred
     if (request.empty())
     {
+        debug("Msgd::handle()::request.empty()");
         close(client);
         return;
     }
@@ -223,108 +229,154 @@ Msgd::handle(int client)
         bool success = send_response(client,"error: unexpected command\n");
     }
 
-    close(client);
+    sem_wait(&quu_lock);
+    debug("Msgd::handle:adding to quu");
+    quu.push(client);
+
+    sem_post(&quu_lock);
+    sem_post(&quu_notEmpty);
+
+    // close(client);
 }
 
 
 Message
 Msgd::parse(string request, int client)
-{
+{ 
+    {
+        debug("Msgd::parse()");
+        stringstream ss;
+        ss << client;
+        debug("Msgd::parse()::client:" + ss.str());
+        ss.str("");
+        ss << request;
+        debug("Msgd::parse()::request:" + ss.str());
+    }
+    
+
     Message message;
     istringstream iss(request);
-    string args;
 
-    getline(iss,args,'\n');
-    istringstream arg_line(args);
-
-    getline(arg_line, message.command, ' ');
-
+    getline(iss, message.command, ' ');
 
     bool commandFound = false;
+
+    //is the command is a put command
     if(message.command == "put")
     {
-        debug("Msgd::parse(): ifcase: put");
-
         commandFound = true;
-        getline(arg_line, message.param[0], ' ');
-        getline(arg_line, message.param[1], ' ');
-        getline(arg_line, message.value, ' ');
 
-        stringstream ss;
-        bool start = true;
-        //process the data let inside the in stream
-        while(!iss.eof())
+        debug("Msgd::parse()::put");
+
+        //assign the parameters from the request into the message object
+        getline(iss, message.param[0], ' ');
+        getline(iss, message.param[1], ' ');
+        getline(iss, message.value, ' ');
+
+        //aquire the message of the put command
+        //grab the cache from the get_request
+        string client_cache = caches[client];
+
+        //in the event that the cache is the same size as the needed string then we should be done
+        if(client_cache.length() == atoi(message.value.c_str()))
         {
-            if(start)
-                start = false; 
-            else
-                ss << '\n';
+            message.message = client_cache;
+        }
+        else if(client_cache.length() < atoi(message.value.c_str()))
+        {
+            //this is the event where not all the message make it trough the get_request
+            //will have to call recv via a get_value call
 
-            string content_line;
-            getline(iss, content_line);
-            debug("Msgd::parse():: parsingLine:" + content_line);
-            ss << content_line;
+
+        }
+        else if(client_cache.length() > atoi(message.value.c_str()))
+        {
+            //this is the event where something broke, the cache is bigger than it should be
         }
 
-        int streamSize = ss.str().size();
-        int messageSize = atoi(message.value.c_str());
 
-        if(streamSize > 0)
-            message.cache = ss.str();
 
-        if(streamSize < messageSize)
-            message.needed = true;
-        else
-            message.needed = false;
 
-        //handle the event where we need more data
-        if(message.needed == true)
-        {
-            string request = message.cache;
-            while(atoi(message.value.c_str()) > request.size())
-            {
-                string newCache = get_request(client);
-                request.append(newCache);
-            }
-            message.cache = request;
-        }
 
-        debug("RANDOM TEST\n" + message.toString());
 
-        //at this point we shoud have a compelte name, subject, value, and content
+
+        // stringstream ss;
+        // bool start = true;
+        // //process the data let inside the in stream
+        // while(!iss.eof())
+        // {
+        //     if(start)
+        //         start = false; 
+        //     else
+        //         ss << '\n';
+
+        //     string content_line;
+        //     getline(iss, content_line);
+        //     debug("Msgd::parse()::put::parsingLine:" + content_line);
+        //     ss << content_line;
+        // }
+
+        // int streamSize = ss.str().size();
+        // int messageSize = atoi(message.value.c_str());
+
+        // if(streamSize > 0)
+        //     message.cache = ss.str();
+
+        // if(streamSize < messageSize)
+        //     message.needed = true;
+        // else
+        //     message.needed = false;
+
+        // //handle the event where we need more data
+        // if(message.needed == true)
+        // {
+        //     string request = message.cache;
+        //     while(atoi(message.value.c_str()) > request.size())
+        //     {
+        //         string newCache = get_request(client);
+        //         request.append(newCache);
+        //     }
+        //     message.cache = request;
+        // }
+
+        // debug("RANDOM TEST\n" + message.toString());
     }
 
+
+    //if the command is a list command
     if(message.command == "list")
     {
         debug("Msgd::parse(): ifcase: list");
 
         commandFound = true;
-        getline(arg_line, message.param[0], ' ');
+        getline(iss, message.param[0], ' ');
         
         message.value = "0";
         message.needed = false;
-        message.cache = "";
+        message.message = "";
     }
 
+    //if the command is a get command
     if(message.command == "get")
     {
         debug("Msgd::parse(): ifcase: get");
 
         commandFound = true;
-        getline(arg_line, message.param[0], ' ');
-        getline(arg_line, message.param[1], ' ');
+        getline(iss, message.param[0], ' ');
+        getline(iss, message.param[1], ' ');
         message.value = "0";
         message.needed = false;
-        message.cache = "";
+        message.message = "";
     }
 
+
+    //if the command is a reset command
     if(message.command == "reset")
     {
         commandFound = true;
     }
 
     return message;
-
 }
 
 
@@ -342,7 +394,7 @@ Msgd::handPut(Message message)
         {
             userFound = true;
             users.at(i).subject.push_back(message.param[1]);
-            users.at(i).message.push_back(message.cache);
+            users.at(i).message.push_back(message.message);
         }
     }
 
@@ -350,7 +402,7 @@ Msgd::handPut(Message message)
     {
         User newUser(message.param[0]);
         newUser.subject.push_back(message.param[1]);
-        newUser.message.push_back(message.cache);
+        newUser.message.push_back(message.message);
         users.push_back(newUser);
     }
 
@@ -491,6 +543,8 @@ Msgd::get_request(int client)
 
             //newline found in the last grab from the recv function
             newlineFound = true;
+            request = request.append(preline);
+            caches[client] = postline;
         }
         else
         {

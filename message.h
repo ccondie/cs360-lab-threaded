@@ -16,7 +16,7 @@ public:
 	string value;
 	bool needed;
 
-	string cache;
+	string message;
 
 	string toString();
 

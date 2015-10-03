@@ -21,7 +21,7 @@ Message::toString()
 	ss << "\tparam[1]:" << param[1] << endl;
 	ss << "\tvalue:" << value << endl;
 	ss << "\tneeded:" << needed << endl;
-	ss << "\tcache:" << cache << endl;
+	ss << "\tmessage:" << message << endl;
 
 	return ss.str();
 }
