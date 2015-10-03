@@ -2,12 +2,12 @@
 
 Msgd::Msgd(int port, bool debug_t) 
 {
-    debug("Msgd::constructor");
     // setup variables
     port_ = port;
     buflen_ = 1024;
     buf_ = new char[buflen_+1];
     debugFlag = debug_t;
+    debug("Msgd::constructor");
 
     sem_init(&user_lock, 0 ,1);
     sem_init(&quu_lock, 0, 1);
@@ -41,7 +41,7 @@ thread_run(void *vptr)
     queue<int>* quu = pack->quu;
     Msgd* self = pack->self_pointer;
 
-    cout << "I AM " << pthread_self() << endl;
+    // cout << "I AM " << pthread_self() << endl;
     while(1)
     {
         //wait for the quu not to be empty
@@ -53,7 +53,7 @@ thread_run(void *vptr)
         quu->pop();
         sem_post(pack->quu_lock);
 
-        cout << "thread " << pthread_self() << " reporting for duty" << endl;
+        // cout << "thread " << pthread_self() << " reporting for duty" << endl;
         //handle the request of this client
         self->handle(currentClient);
 
@@ -75,7 +75,7 @@ Msgd::run()
     create();
 
     //create the pthreads
-    for(int i = 0; i < 2; i++)
+    for(int i = 0; i < 10; i++)
     {
         
         debug("Msgd::run()::creating thread");
@@ -212,6 +212,8 @@ Msgd::handle(int client)
 
     if(message.command == "reset")
     {
+
+        sem_wait(&user_lock);
         commandFound = true;
         for(int i = 0; i < users.size(); i++)
         {
@@ -219,6 +221,7 @@ Msgd::handle(int client)
             users.at(i).message.clear();
         }
         users.clear();
+        sem_post(&user_lock);
 
         success = send_response(client, "OK\n");
     }
@@ -280,7 +283,19 @@ Msgd::parse(string request, int client)
         //in the event that the cache is the same size as the needed string then we should be done
         if(client_cache.length() == atoi(message.value.c_str()))
         {
-            debug("Msgd::parse()::put::cache == to value");
+            {
+                stringstream ss;
+                debug("Msgd::parse()::put::cache == to value");
+                ss << client_cache.length();
+                debug("Msgd::parse()::put::cache.size:" + ss.str());
+                ss.str("");
+                debug("Msgd::parse()::put::cache:" + client_cache + "|END");
+                ss << message.value;
+                debug("Msgd::parse()::put::message.value:" + ss.str());
+                ss.str("");
+
+            }  
+
             message.message = client_cache;
             message.needed = false;
         }
@@ -288,7 +303,18 @@ Msgd::parse(string request, int client)
         {
             //this is the event where not all the message make it trough the get_request
             //will have to call recv via a get_value call
-            debug("Msgd::parse()::put::cache < to value");
+            {
+                stringstream ss;
+                debug("Msgd::parse()::put::cache < to value");
+                ss << client_cache.length();
+                debug("Msgd::parse()::put::cache.size:" + ss.str());
+                ss.str("");
+                debug("Msgd::parse()::put::cache:" + client_cache + "|END");
+                ss << message.value;
+                debug("Msgd::parse()::put::message.value:" + ss.str());
+                ss.str("");
+
+            }  
 
 
         }
@@ -309,53 +335,6 @@ Msgd::parse(string request, int client)
 
             }  
         }
-
-
-
-
-
-
-
-        // stringstream ss;
-        // bool start = true;
-        // //process the data let inside the in stream
-        // while(!iss.eof())
-        // {
-        //     if(start)
-        //         start = false; 
-        //     else
-        //         ss << '\n';
-
-        //     string content_line;
-        //     getline(iss, content_line);
-        //     debug("Msgd::parse()::put::parsingLine:" + content_line);
-        //     ss << content_line;
-        // }
-
-        // int streamSize = ss.str().size();
-        // int messageSize = atoi(message.value.c_str());
-
-        // if(streamSize > 0)
-        //     message.cache = ss.str();
-
-        // if(streamSize < messageSize)
-        //     message.needed = true;
-        // else
-        //     message.needed = false;
-
-        // //handle the event where we need more data
-        // if(message.needed == true)
-        // {
-        //     string request = message.cache;
-        //     while(atoi(message.value.c_str()) > request.size())
-        //     {
-        //         string newCache = get_request(client);
-        //         request.append(newCache);
-        //     }
-        //     message.cache = request;
-        // }
-
-        // debug("RANDOM TEST\n" + message.toString());
     }
 
 
@@ -406,6 +385,8 @@ Msgd::handPut(Message message)
 
     bool userFound = false;
 
+    sem_wait(&user_lock);
+
     for(int i = 0; i < users.size(); i++)
     {
         if(users.at(i).name == message.param[0])
@@ -424,6 +405,8 @@ Msgd::handPut(Message message)
         users.push_back(newUser);
     }
 
+    sem_post(&user_lock);
+
     return "OK\n";
 }
 
@@ -438,6 +421,8 @@ Msgd::handList(Message message)
 
     stringstream resp;
 
+    sem_wait(&user_lock);
+
     debug("Msgd::handList()::primaryFOR");
     for(int i = 0; i < users.size(); i++)
     {
@@ -448,6 +433,8 @@ Msgd::handList(Message message)
             resp << users.at(i).list();
         }
     }
+
+    sem_post(&user_lock);
 
     if(!userFound)
     {
@@ -470,6 +457,8 @@ Msgd::handGet(Message message)
     bool userFound = false;
 
     stringstream resp;
+
+    sem_wait(&user_lock);
 
     debug("Msgd::handGet()::primaryFOR");
     for(int i = 0; i < users.size(); i++)
@@ -497,6 +486,8 @@ Msgd::handGet(Message message)
         //send an error
         return "error user not found\n";
     }
+
+    sem_post(&user_lock);
 
     return resp.str();
 }
@@ -556,11 +547,20 @@ Msgd::get_request(int client)
 
             while(!iss.eof())
             {
-                string dummy;
-                getline(iss, dummy, '\n');
+                // string dummy;
+                // getline(iss, dummy, '\n');
 
-                postline.append(dummy + '\n');
+                // postline.append(dummy + '\n');
+                string dummy;
+                getline(iss, dummy);
+
+                if(iss.eof())
+                    postline.append(dummy);
+                else
+                    postline.append(dummy + '\n');
+
             }
+                
 
             debug("Msgd::get_request()::postline:BEGIN|" + postline + "|END");
 

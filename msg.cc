@@ -204,7 +204,7 @@ Msg::msg_send(string line)
     }
 
 
-    protocol << "put " << user << " " << subject << " " << (message.length() + 1) << "\n" << message;
+    protocol << "put " << user << " " << subject << " " << message.length() << "\n" << message;
 
     debug("Msg::msg_send():send_request():protocol:" + protocol.str());
     bool success = send_request(protocol.str());
