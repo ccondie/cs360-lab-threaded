@@ -75,7 +75,7 @@ Msgd::run()
     create();
 
     //create the pthreads
-    for(int i = 0; i < 3; i++)
+    for(int i = 0; i < 2; i++)
     {
         
         debug("Msgd::run()::creating thread");
@@ -280,18 +280,34 @@ Msgd::parse(string request, int client)
         //in the event that the cache is the same size as the needed string then we should be done
         if(client_cache.length() == atoi(message.value.c_str()))
         {
+            debug("Msgd::parse()::put::cache == to value");
             message.message = client_cache;
+            message.needed = false;
         }
         else if(client_cache.length() < atoi(message.value.c_str()))
         {
             //this is the event where not all the message make it trough the get_request
             //will have to call recv via a get_value call
+            debug("Msgd::parse()::put::cache < to value");
 
 
         }
         else if(client_cache.length() > atoi(message.value.c_str()))
         {
             //this is the event where something broke, the cache is bigger than it should be
+            
+            {
+                stringstream ss;
+                debug("Msgd::parse()::put::cache > to value");
+                ss << client_cache.length();
+                debug("Msgd::parse()::put::cache.size:" + ss.str());
+                ss.str("");
+                debug("Msgd::parse()::put::cache:" + client_cache + "|END");
+                ss << message.value;
+                debug("Msgd::parse()::put::message.value:" + ss.str());
+                ss.str("");
+
+            }  
         }
 
 
@@ -346,9 +362,10 @@ Msgd::parse(string request, int client)
     //if the command is a list command
     if(message.command == "list")
     {
+        commandFound = true;
         debug("Msgd::parse(): ifcase: list");
 
-        commandFound = true;
+        
         getline(iss, message.param[0], ' ');
         
         message.value = "0";
@@ -359,9 +376,10 @@ Msgd::parse(string request, int client)
     //if the command is a get command
     if(message.command == "get")
     {
+        commandFound = true;
         debug("Msgd::parse(): ifcase: get");
 
-        commandFound = true;
+        
         getline(iss, message.param[0], ' ');
         getline(iss, message.param[1], ' ');
         message.value = "0";
@@ -461,8 +479,13 @@ Msgd::handGet(Message message)
             debug("Msgd::handGet()::User Found");
             
             userFound = true;
-            if(index >= users.at(i).subject.size())
+            if(index > users.at(i).subject.size())
+            {
+                stringstream ss;
+                ss << users.at(i).subject.size();
+                debug("Msgd::handGet()::subjectIndexOutOfBounds:subject.size:" + ss.str());
                 return "error: index out of bounds";
+            }
             else
             resp << users.at(i).read(index);
         }
@@ -563,22 +586,31 @@ bool
 Msgd::send_response(int client, string response) 
 {
     debug("Msgd::send_response()");
+    debug("Msgd::send_response()::response:" + response);
+
     // prepare to send response
     const char* ptr = response.c_str();
     int nleft = response.length();
     int nwritten;
     // loop to be sure it is all sent
-    while (nleft) {
-        if ((nwritten = send(client, ptr, nleft, 0)) < 0) {
-            if (errno == EINTR) {
+    while (nleft) 
+    {
+        if ((nwritten = send(client, ptr, nleft, 0)) < 0) 
+        {
+            if (errno == EINTR)
+            {
                 // the socket call was interrupted -- try again
                 continue;
-            } else {
+            } 
+            else 
+            {
                 // an error occurred, so break out
                 perror("write");
                 return false;
             }
-        } else if (nwritten == 0) {
+        } 
+        else if (nwritten == 0) 
+        {
             // the socket is closed
             return false;
         }
