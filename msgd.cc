@@ -27,7 +27,6 @@ struct package
     sem_t* quu_lock;
 
     queue<int>* quu;
-    int thread_id;
     Msgd* self_pointer;
 
 };
@@ -53,7 +52,8 @@ thread_run(void *vptr)
         sem_post(pack->quu_lock);
 
         //handle the request of this client
-        // cout << "thread " << pthread_self() << " running with client " << currentClient << endl;
+
+        cout << "thread " << pthread_self() << " running with client " << currentClient << endl;
         self->handle(currentClient);
     }
 }
@@ -64,18 +64,17 @@ Msgd::run()
     // create and run the Msgd
     create();
 
+    struct package pack;
+    pack.quu_notEmpty = &quu_notEmpty;
+    pack.quu_lock = &quu_lock;
+    pack.quu = &quu;
+    pack.self_pointer = this;
+
     //create the pthreads
-    for(int i = 0; i < 1; i++)
+    for(int i = 0; i < 2; i++)
     {
         
         debug("Msgd::run()::creating thread");
-
-        struct package pack;
-        pack.quu_notEmpty = &quu_notEmpty;
-        pack.quu_lock = &quu_lock;
-        pack.quu = &quu;
-        pack.self_pointer = this;
-
         pthread_t temp;
         threads.push_back(pthread_create(&temp, NULL, &thread_run, &pack));
     }
@@ -195,7 +194,9 @@ Msgd::handle(int client)
     }
 
     //handle message
-    commandFound = false;
+    bool commandFound = false;
+
+    debug("Msgd::handle::postParse:" + '\n' + message.toString());
 
     if(message.command == "put")
     {
@@ -258,7 +259,7 @@ Msgd::handle(int client)
 
     if(!commandFound)
     {
-        debug("Msgd::handle::commandNotFound");
+        debug("Msgd::handle::commandNotFound:request:" + request);
         //throw error
         bool success = send_response(client,"error unexpected command");
         {
@@ -266,6 +267,9 @@ Msgd::handle(int client)
             ss << success;
             debug("Msgd::send_response()::success:" + ss.str());
         }
+        debug(message.toString());
+        close(client);
+        return;
     }
 
     sem_wait(&quu_lock);
@@ -533,8 +537,9 @@ Msgd::handGet(Message message)
         return "error user not found\n";
     }
 
-    sem_post(&user_lock);
 
+
+    sem_post(&user_lock);
     return resp.str();
 }
 

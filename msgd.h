@@ -55,8 +55,6 @@ private:
     char* buf_;
 
     bool debugFlag;
-    bool commandFound;
-
 
     sem_t user_lock;
     sem_t quu_lock;
