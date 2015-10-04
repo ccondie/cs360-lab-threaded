@@ -15,6 +15,7 @@ public:
 	string param[2];
 	string value;
 	bool needed;
+	bool parse_error;
 
 	string message;
 

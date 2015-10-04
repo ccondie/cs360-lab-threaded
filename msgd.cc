@@ -11,6 +11,7 @@ Msgd::Msgd(int port, bool debug_t)
 
     sem_init(&user_lock, 0 ,1);
     sem_init(&quu_lock, 0, 1);
+    sem_init(&cache_lock, 0, 1);
     sem_init(&quu_notEmpty, 0 , 0);
 }
 
@@ -24,7 +25,6 @@ struct package
 {
     sem_t* quu_notEmpty;
     sem_t* quu_lock;
-    sem_t* user_lock;
 
     queue<int>* quu;
     int thread_id;
@@ -41,7 +41,6 @@ thread_run(void *vptr)
     queue<int>* quu = pack->quu;
     Msgd* self = pack->self_pointer;
 
-    // cout << "I AM " << pthread_self() << endl;
     while(1)
     {
         //wait for the quu not to be empty
@@ -53,18 +52,9 @@ thread_run(void *vptr)
         quu->pop();
         sem_post(pack->quu_lock);
 
-        // cout << "thread " << pthread_self() << " reporting for duty" << endl;
         //handle the request of this client
+        // cout << "thread " << pthread_self() << " running with client " << currentClient << endl;
         self->handle(currentClient);
-
-        // sem_post(pack->quu_notEmpty);
-
-        //return it to the end
-        //      sem_post()
-        //  OR
-        //remove it
-        //      NOTHING
-
     }
 }
 
@@ -75,7 +65,7 @@ Msgd::run()
     create();
 
     //create the pthreads
-    for(int i = 0; i < 10; i++)
+    for(int i = 0; i < 1; i++)
     {
         
         debug("Msgd::run()::creating thread");
@@ -83,13 +73,11 @@ Msgd::run()
         struct package pack;
         pack.quu_notEmpty = &quu_notEmpty;
         pack.quu_lock = &quu_lock;
-        pack.user_lock = &user_lock;
         pack.quu = &quu;
         pack.self_pointer = this;
 
         pthread_t temp;
         threads.push_back(pthread_create(&temp, NULL, &thread_run, &pack));
-        usleep(1);
     }
 
     serve();
@@ -181,37 +169,74 @@ Msgd::handle(int client)
     // break if client is done or an error occurred
     if (request.empty())
     {
-        debug("Msgd::handle()::request.empty()");
+        debug("Msgd::handle()::request_error");
         close(client);
+        {
+            stringstream ss;
+            ss << client;
+            debug("Msgd::handle()::clientClosed:" + ss.str());
+        }
         return;
     }
 
     //parse request
     message = parse(request, client);
 
+    if(message.parse_error == true)
+    {
+        debug("Msgd::handle::parse_error");
+        success = send_response(client, "error parse_error");
+        // close(client);
+        sem_wait(&quu_lock);
+        quu.push(client);
+        sem_post(&quu_lock);
+        sem_post(&quu_notEmpty);
+        return;
+    }
+
     //handle message
     commandFound = false;
 
     if(message.command == "put")
     {
+        debug("Msgd::handle::put");
         commandFound = true;
         success = send_response(client, handPut(message));
+
+        {
+            stringstream ss;
+            ss << success;
+            debug("Msgd::send_response()::success:" + ss.str());
+        }
     }
 
     if(message.command == "list")
     {
+        debug("Msgd::handle::list");
         commandFound = true;
         success = send_response(client, handList(message));
+        {
+            stringstream ss;
+            ss << success;
+            debug("Msgd::send_response()::success:" + ss.str());
+        }
     }
 
     if(message.command == "get")
     {
+        debug("Msgd::handle::get");
         commandFound = true;
         success = send_response(client, handGet(message));
+        {
+            stringstream ss;
+            ss << success;
+            debug("Msgd::send_response()::success:" + ss.str());
+        }
     }
 
     if(message.command == "reset")
     {
+        debug("Msgd::handle::reset");
 
         sem_wait(&user_lock);
         commandFound = true;
@@ -224,22 +249,29 @@ Msgd::handle(int client)
         sem_post(&user_lock);
 
         success = send_response(client, "OK\n");
+        {
+            stringstream ss;
+            ss << success;
+            debug("Msgd::send_response()::success:" + ss.str());
+        }
     }
 
     if(!commandFound)
     {
+        debug("Msgd::handle::commandNotFound");
         //throw error
-        bool success = send_response(client,"error: unexpected command\n");
+        bool success = send_response(client,"error unexpected command");
+        {
+            stringstream ss;
+            ss << success;
+            debug("Msgd::send_response()::success:" + ss.str());
+        }
     }
 
     sem_wait(&quu_lock);
-    debug("Msgd::handle:adding to quu");
     quu.push(client);
-
     sem_post(&quu_lock);
     sem_post(&quu_notEmpty);
-
-    // close(client);
 }
 
 
@@ -258,6 +290,7 @@ Msgd::parse(string request, int client)
     
 
     Message message;
+    message.parse_error = false;
     istringstream iss(request);
 
     getline(iss, message.command, ' ');
@@ -276,9 +309,18 @@ Msgd::parse(string request, int client)
         getline(iss, message.param[1], ' ');
         getline(iss, message.value, ' ');
 
+        if((message.param[0].length() == 0) || (message.param[1].length() == 0) ||
+            (message.value.length() == 0))
+        {
+            message.parse_error = true;
+            return message;
+        }
+
         //aquire the message of the put command
         //grab the cache from the get_request
+        sem_wait(&cache_lock);
         string client_cache = caches[client];
+        sem_post(&cache_lock);
 
         //in the event that the cache is the same size as the needed string then we should be done
         if(client_cache.length() == atoi(message.value.c_str()))
@@ -342,7 +384,7 @@ Msgd::parse(string request, int client)
     if(message.command == "list")
     {
         commandFound = true;
-        debug("Msgd::parse(): ifcase: list");
+        debug("Msgd::parse()::list");
 
         
         getline(iss, message.param[0], ' ');
@@ -356,7 +398,7 @@ Msgd::parse(string request, int client)
     if(message.command == "get")
     {
         commandFound = true;
-        debug("Msgd::parse(): ifcase: get");
+        debug("Msgd::parse()::get");
 
         
         getline(iss, message.param[0], ' ');
@@ -370,6 +412,7 @@ Msgd::parse(string request, int client)
     //if the command is a reset command
     if(message.command == "reset")
     {
+        debug("Msgd::parse()::reset");
         commandFound = true;
     }
 
@@ -466,14 +509,16 @@ Msgd::handGet(Message message)
         if(users.at(i).name == message.param[0])
         {
             debug("Msgd::handGet()::User Found");
-            
             userFound = true;
+
             if(index > users.at(i).subject.size())
             {
                 stringstream ss;
                 ss << users.at(i).subject.size();
                 debug("Msgd::handGet()::subjectIndexOutOfBounds:subject.size:" + ss.str());
-                return "error: index out of bounds";
+
+                sem_post(&user_lock);
+                return "error index out of bounds\n";
             }
             else
             resp << users.at(i).read(index);
@@ -484,6 +529,7 @@ Msgd::handGet(Message message)
     {
         debug("Msgd::handGet()::userNotFound");
         //send an error
+        sem_post(&user_lock);
         return "error user not found\n";
     }
 
@@ -567,7 +613,9 @@ Msgd::get_request(int client)
             //newline found in the last grab from the recv function
             newlineFound = true;
             request = request.append(preline);
+            sem_wait(&cache_lock);
             caches[client] = postline;
+            sem_post(&cache_lock);
         }
         else
         {

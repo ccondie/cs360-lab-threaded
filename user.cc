@@ -36,7 +36,7 @@ User::read(int index)
 	}
 	else
 	{
-		ss << "message " << subject.at(index - 1) << " " << message.at(index - 1).length() << "\n" << message.at(index - 1) << "\n";
+		ss << "message " << subject.at(index - 1) << " " << message.at(index - 1).length() << "\n" << message.at(index - 1);
 	}
 
 	return ss.str();

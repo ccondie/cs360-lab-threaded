@@ -15,13 +15,13 @@ Message::toString()
 {
 	stringstream ss;
 
-	ss << "Message.toString()" << endl;
-	ss << "\tcommand:" << command << endl;
-	ss << "\tparam[0]:" << param[0] << endl;
-	ss << "\tparam[1]:" << param[1] << endl;
-	ss << "\tvalue:" << value << endl;
-	ss << "\tneeded:" << needed << endl;
-	ss << "\tmessage:" << message << endl;
+	ss << "\tMessage.toString()" << endl;
+	ss << "\t\tcommand:" << command << endl;
+	ss << "\t\tparam[0]:" << param[0] << endl;
+	ss << "\t\tparam[1]:" << param[1] << endl;
+	ss << "\t\tvalue:" << value << endl;
+	ss << "\t\tneeded:" << needed << endl;
+	ss << "\t\tmessage:" << message << endl;
 
 	return ss.str();
 }

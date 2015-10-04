@@ -61,6 +61,7 @@ private:
     sem_t user_lock;
     sem_t quu_lock;
     sem_t quu_notEmpty;
+    sem_t cache_lock;
 
     vector<User> users;
     vector<pthread_t> threads;
