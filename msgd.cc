@@ -5,7 +5,6 @@ Msgd::Msgd(int port, bool debug_t)
     // setup variables
     port_ = port;
     buflen_ = 1024;
-    buf_ = new char[buflen_+1];
     debugFlag = debug_t;
     debug("Msgd::constructor");
 
@@ -18,7 +17,6 @@ Msgd::Msgd(int port, bool debug_t)
 Msgd::~Msgd() 
 {
     debug("Msgd::destructor");
-    delete buf_;
 }
 
 struct package
@@ -53,7 +51,7 @@ thread_run(void *vptr)
 
         //handle the request of this client
 
-        cout << "thread " << pthread_self() << " running with client " << currentClient << endl;
+        // cout << "thread " << pthread_self() << " running with client " << currentClient << endl;
         self->handle(currentClient);
     }
 }
@@ -71,7 +69,7 @@ Msgd::run()
     pack.self_pointer = this;
 
     //create the pthreads
-    for(int i = 0; i < 2; i++)
+    for(int i = 0; i < 10; i++)
     {
         
         debug("Msgd::run()::creating thread");
@@ -549,6 +547,7 @@ string
 Msgd::get_request(int client) 
 {
     debug("Msgd::get_request()");
+    char* buf_ = new char[buflen_+1];
 
     string request = "";
     bool newlineFound = false;
@@ -570,12 +569,17 @@ Msgd::get_request(int client)
                 // the socket call was interrupted -- try again
                 continue;
             else
+            {
                 // an error occurred, so break out
+                delete buf_;
                 return "";
+            }
+                
         } 
         else if (nread == 0) 
         {
             // the socket is closed
+            delete buf_;
             return "";
         }
 
@@ -632,6 +636,7 @@ Msgd::get_request(int client)
     }
     // a better server would cut off anything after the newline and
     // save it in a cache
+    delete buf_;
     return request;
 }
 
